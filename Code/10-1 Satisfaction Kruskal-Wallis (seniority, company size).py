@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 from scipy import stats
 
 # 1. LOAD DATA
@@ -23,6 +24,52 @@ df.rename(columns=sat_cols_map, inplace=True)
 results = []
 demographics = [('Seniority Level', 'Seniority'), ('Company Size', 'CompanySize')]
 
+def calculate_epsilon_squared(H, n):
+    """
+    Calculates Epsilon-squared for Kruskal-Wallis.
+    Formula: H / ((n^2 - 1) / (n + 1))
+    """
+    if n <= 1: return 0
+    return H / ((n**2 - 1) / (n + 1))
+
+def bootstrap_epsilon_ci(df_subset, group_col, val_col, n_boot=1000, seed=42):
+    """
+    Bootstraps the CI for Epsilon-squared using stratified resampling.
+    """
+    np.random.seed(seed)
+    boot_es = []
+    
+    # Group data for stratified resampling
+    groups_dict = {g: df_subset[df_subset[group_col] == g] for g in df_subset[group_col].unique()}
+    
+    for _ in range(n_boot):
+        # Stratified resampling: sample each group with replacement
+        resampled_parts = []
+        for g, data in groups_dict.items():
+            resampled_parts.append(data.sample(n=len(data), replace=True))
+        
+        resampled = pd.concat(resampled_parts)
+        
+        # Prepare groups for Kruskal-Wallis
+        r_groups = [resampled[resampled[group_col]==g][val_col] for g in resampled[group_col].unique()]
+        r_groups = [g for g in r_groups if len(g) > 0]
+        
+        if len(r_groups) < 2:
+            continue
+            
+        try:
+            h_stat, _ = stats.kruskal(*r_groups)
+            n_total = len(resampled)
+            es = calculate_epsilon_squared(h_stat, n_total)
+            boot_es.append(es)
+        except ValueError:
+            continue
+
+    if not boot_es:
+        return np.nan, np.nan
+
+    return np.percentile(boot_es, 2.5), np.percentile(boot_es, 97.5)
+
 # 3. RUN TESTS
 for method in sat_cols_map.values():
     for demo_name, demo_col in demographics:
@@ -32,7 +79,15 @@ for method in sat_cols_map.values():
         
         if len(groups) < 2: continue
             
+        # Standard Kruskal-Wallis Test
         stat, p = stats.kruskal(*groups)
+        
+        # Calculate Effect Size (Epsilon-squared)
+        n_total = len(temp_df)
+        epsilon_sq = calculate_epsilon_squared(stat, n_total)
+        
+        # Calculate Bootstrap CI (95%)
+        ci_lower, ci_upper = bootstrap_epsilon_ci(temp_df, demo_col, method)
         
         sig = 'ns'
         if p < 0.001: sig = '***'
@@ -51,16 +106,16 @@ for method in sat_cols_map.values():
             'df': len(groups) - 1,
             'P-Value': p,
             'Sig.': sig,
+            'Epsilon-squared': f"{epsilon_sq:.3f}",
+            'CI Lower': f"{ci_lower:.3f}",
+            'CI Upper': f"{ci_upper:.3f}",
             'Finding': finding
         })
 
 # 4. FORMAT & EXPORT
 res_df = pd.DataFrame(results)
 res_df = res_df.sort_values(by=['Method (Satisfaction)', 'Demographic Factor'])
-res_df['P-Value'] = res_df['P-Value'].apply(lambda x: "< .001" if x < 0.001 else f"{x:.3f}")
 
-# EXPORT TO CSV
-output_filename = 'Appendix_B_Satisfaction.csv'
-res_df.to_csv(output_filename, index=False)
-print(f"Success! Satisfaction analysis saved to '{output_filename}'")
-print(res_df.head().to_markdown(index=False))
+print(res_df.head())
+
+res_df.to_csv('Kruskal_Wallis_Results_with_CI.csv', index=False)
