@@ -101,6 +101,6 @@ if not res_df.empty:
     # Format float columns
     res_df['Effect Size (eps^2)'] = res_df['Effect Size (eps^2)'].map('{:.3f}'.format)
     
-    output_filename = 'Appendix_B_Satisfaction-AI_Usage_Combined_CI.csv'
+    output_filename = 'TableA3_Satisfaction-AI_Usage_Combined_CI.csv'
     res_df.to_csv(output_filename, index=False)
     print(res_df.head().to_markdown(index=False))
