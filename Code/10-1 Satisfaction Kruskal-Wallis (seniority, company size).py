@@ -107,8 +107,7 @@ for method in sat_cols_map.values():
             'P-Value': p,
             'Sig.': sig,
             'Epsilon-squared': f"{epsilon_sq:.3f}",
-            'CI Lower': f"{ci_lower:.3f}",
-            'CI Upper': f"{ci_upper:.3f}",
+            '95% CI': f"[{ci_lower:.3f}, {ci_upper:.3f}]",
             'Finding': finding
         })
 
@@ -116,6 +115,7 @@ for method in sat_cols_map.values():
 res_df = pd.DataFrame(results)
 res_df = res_df.sort_values(by=['Method (Satisfaction)', 'Demographic Factor'])
 
+print("Analysis Complete. First 5 rows:")
 print(res_df.head())
 
-res_df.to_csv('Kruskal_Wallis_Results_with_CI.csv', index=False)
+res_df.to_csv('Kruskal_Wallis_Results_Merged_CI.csv', index=False)
