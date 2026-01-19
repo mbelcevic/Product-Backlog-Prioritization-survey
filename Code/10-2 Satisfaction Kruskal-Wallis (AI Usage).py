@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 from scipy import stats
 
 # 1. LOAD DATA
@@ -21,8 +22,11 @@ sat_cols_map = {
 df.rename(columns=sat_cols_map, inplace=True)
 
 results = []
-# We test both the specific frequency ('UsedAI') and the binary grouping ('AIUsage')
 demographics = [('AI Usage Frequency', 'UsedAI'), ('AI User vs Non-User', 'AIUsage')]
+
+# Bootstrap settings
+n_boot = 1000 
+rng = np.random.default_rng(42)
 
 # 3. RUN TESTS
 for method in sat_cols_map.values():
@@ -30,18 +34,42 @@ for method in sat_cols_map.values():
         if demo_col not in df.columns:
             continue
             
-        # Get data for this method and demographic
         temp_df = df[[demo_col, method]].dropna()
+        n = len(temp_df)
         
-        # Create groups based on unique values in the demographic column
-        groups = [temp_df[temp_df[demo_col]==g][method] for g in temp_df[demo_col].unique()]
+        unique_vals = temp_df[demo_col].unique()
+        groups = [temp_df[temp_df[demo_col]==g][method] for g in unique_vals]
         groups = [g for g in groups if len(g) > 0]
         
-        # Kruskal-Wallis requires at least 2 groups
         if len(groups) < 2: 
             continue
             
         stat, p = stats.kruskal(*groups)
+        
+        # Effect Size (Epsilon-squared)
+        epsilon2 = stat * (n + 1) / (n**2 - 1)
+        
+        # Bootstrap
+        boot_vals = []
+        for _ in range(n_boot):
+            resamp = temp_df.sample(n=n, replace=True)
+            bgroups = [resamp[resamp[demo_col]==g][method] for g in resamp[demo_col].unique()]
+            bgroups = [g for g in bgroups if len(g) > 0]
+            if len(bgroups) < 2:
+                continue
+            try:
+                bstat, _ = stats.kruskal(*bgroups)
+                b_eps = bstat * (n + 1) / (n**2 - 1)
+                boot_vals.append(b_eps)
+            except ValueError:
+                pass
+        
+        # Format CI as single string
+        ci_str = "-"
+        if len(boot_vals) > 0:
+            ci_lower = np.percentile(boot_vals, 2.5)
+            ci_upper = np.percentile(boot_vals, 97.5)
+            ci_str = f"[{ci_lower:.3f}, {ci_upper:.3f}]"
         
         sig = 'ns'
         if p < 0.001: sig = '***'
@@ -50,7 +78,6 @@ for method in sat_cols_map.values():
         
         finding = "-"
         if p < 0.05:
-            # Calculate means to see which group is highest
             means = temp_df.groupby(demo_col)[method].mean().sort_values(ascending=False)
             finding = f"Highest: {means.index[0]} ({means.iloc[0]:.2f})"
             
@@ -61,6 +88,8 @@ for method in sat_cols_map.values():
             'df': len(groups) - 1,
             'P-Value': p,
             'Sig.': sig,
+            'Effect Size (eps^2)': epsilon2,
+            '95% CI': ci_str,
             'Finding': finding
         })
 
@@ -68,12 +97,10 @@ for method in sat_cols_map.values():
 res_df = pd.DataFrame(results)
 if not res_df.empty:
     res_df = res_df.sort_values(by=['Method (Satisfaction)', 'Demographic Factor'])
-
-    # EXPORT TO CSV
-output_filename = 'Appendix_B_Satisfaction-AI_Usage.csv'
-res_df.to_csv(output_filename, index=False)
-print(f"Success! Satisfaction analysis saved to '{output_filename}'")
-print(res_df.head().to_markdown(index=False))
-
-print(res_df)
-# res_df.to_csv('Kruskal_Wallis_AI_Satisfaction.csv', index=False)
+    
+    # Format float columns
+    res_df['Effect Size (eps^2)'] = res_df['Effect Size (eps^2)'].map('{:.3f}'.format)
+    
+    output_filename = 'Appendix_B_Satisfaction-AI_Usage_Combined_CI.csv'
+    res_df.to_csv(output_filename, index=False)
+    print(res_df.head().to_markdown(index=False))
