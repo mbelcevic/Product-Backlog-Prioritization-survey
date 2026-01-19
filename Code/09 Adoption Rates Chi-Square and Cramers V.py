@@ -5,6 +5,7 @@ from scipy import stats
 # 1. LOAD DATA
 # Make sure your file name matches exactly
 df = pd.read_csv('FinalResults.csv')
+df = df[df["Participated"]=="Yes"]
 
 # 2. CONFIGURATION
 methods_map = {
