@@ -116,7 +116,7 @@ res_df = res_df.sort_values(by=['Method', 'Demographic Factor'])
 res_df['P-Value'] = res_df['P-Value'].apply(lambda x: "< .001" if x < 0.001 else f"{x:.3f}")
 
 # EXPORT
-output_filename = 'Appendix_A_Adoption_with_CIs.csv'
+output_filename = 'Appendix_A_Table A1.csv'
 res_df.to_csv(output_filename, index=False)
 
 print(res_df[['Method', 'Demographic Factor', 'Effect Size (V)', '95% CI', 'Sig.']].head().to_markdown(index=False))
